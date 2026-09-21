@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PN / SN 扫码录入</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#E9EDF1; --surface:#FFFFFF; --ink:#142230; --muted:#5A6978;
+  --line:#D2DAE2; --line-strong:#9FB0BF;
+  --brand:#0B5C7D; --brand-ink:#FFFFFF; --brand-soft:rgba(11,92,125,.14);
+  --idle:#DDE8F0; --idle-ink:#143247;
+  --ok-bg:#D9F1E2; --ok-ink:#0F5A2E; --ok-solid:#1E8A4C; --ok-icon:#FFFFFF;
+  --warn-bg:#FFE9B0; --warn-ink:#6B4500; --warn-solid:#D89200; --warn-icon:#2B1C00;
+  --err-bg:#F9D6D2; --err-ink:#8A1F14; --err-solid:#C7372F; --err-icon:#FFFFFF;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1720; --surface:#172230; --ink:#E6EDF3; --muted:#93A3B3;
+    --line:#2B3A4A; --line-strong:#4A6075;
+    --brand:#4DB6DB; --brand-ink:#062230; --brand-soft:rgba(77,182,219,.2);
+    --idle:#1D2E3E; --idle-ink:#D6E6F2;
+    --ok-bg:#123524; --ok-ink:#8FE0B0; --ok-solid:#34B26B; --ok-icon:#04210F;
+    --warn-bg:#3E2E08; --warn-ink:#FFD87A; --warn-solid:#E0A21A; --warn-icon:#2B1C00;
+    --err-bg:#431A16; --err-ink:#FFB4AA; --err-solid:#E5584B; --err-icon:#2A0703;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1720; --surface:#172230; --ink:#E6EDF3; --muted:#93A3B3;
+  --line:#2B3A4A; --line-strong:#4A6075;
+  --brand:#4DB6DB; --brand-ink:#062230; --brand-soft:rgba(77,182,219,.2);
+  --idle:#1D2E3E; --idle-ink:#D6E6F2;
+  --ok-bg:#123524; --ok-ink:#8FE0B0; --ok-solid:#34B26B; --ok-icon:#04210F;
+  --warn-bg:#3E2E08; --warn-ink:#FFD87A; --warn-solid:#E0A21A; --warn-icon:#2B1C00;
+  --err-bg:#431A16; --err-ink:#FFB4AA; --err-solid:#E5584B; --err-icon:#2A0703;
+  color-scheme:dark;
+}
+html{ scroll-padding-top:env(safe-area-inset-top,0px); }
+*,*::before,*::after{ box-sizing:border-box; }
+[hidden]{ display:none !important; }
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.5 "Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+.mono{ font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; font-weight:500; letter-spacing:.01em; }
+.wrap{ max-width:720px; margin:0 auto; padding:12px 14px 110px; }
+
+/* 一键导出栏 */
+.exportbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  background:var(--surface); border-top:1px solid var(--line-strong);
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+}
+.exportbar .inner{ max-width:720px; margin:0 auto; }
+.btn.big{
+  width:100%; min-height:54px; font-size:18px; display:flex; align-items:center; justify-content:center; gap:10px;
+}
+.btn.big span{ font-size:14px; font-weight:500; opacity:.85; }
+
+/* header */
+.top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
+.top h1{ margin:0; font-size:18px; font-weight:700; }
+.notice{ margin:0 0 10px; padding:8px 12px; border-radius:10px; background:var(--warn-bg); color:var(--warn-ink); font-size:13px; }
+
+/* controls */
+.btn{
+  font:inherit; min-height:40px; padding:0 14px; border-radius:10px;
+  border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); cursor:pointer;
+}
+.btn:hover{ border-color:var(--brand); }
+.btn:disabled{ opacity:.45; cursor:default; }
+.btn.primary{ background:var(--brand); color:var(--brand-ink); border-color:var(--brand); font-weight:700; }
+.btn.danger{ color:var(--err-ink); border-color:var(--err-solid); }
+.btn.danger.armed{ background:var(--err-solid); color:var(--err-icon); }
+.btn.small{ min-height:34px; padding:0 10px; font-size:13px; }
+.btn:focus-visible,.tab:focus-visible,.row-btn:focus-visible,.inp:focus-visible,.scan:focus-visible{ outline:3px solid var(--brand); outline-offset:2px; }
+.inp{
+  font:inherit; width:100%; min-height:42px; padding:8px 10px; border-radius:10px;
+  border:1px solid var(--line-strong); background:var(--surface); color:var(--ink);
+}
+textarea.inp{ min-height:96px; resize:vertical; font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; font-size:14px; }
+
+/* station */
+.station{
+  --st-bg:var(--idle); --st-ink:var(--idle-ink); --st-solid:var(--line-strong); --st-icon:#fff;
+  margin-top:8px; background:var(--surface); border:3px solid var(--st-solid); border-radius:16px; overflow:hidden;
+}
+[data-state="ok"]{ --st-bg:var(--ok-bg); --st-ink:var(--ok-ink); --st-solid:var(--ok-solid); --st-icon:var(--ok-icon); }
+[data-state="warn"]{ --st-bg:var(--warn-bg); --st-ink:var(--warn-ink); --st-solid:var(--warn-solid); --st-icon:var(--warn-icon); }
+[data-state="err"]{ --st-bg:var(--err-bg); --st-ink:var(--err-ink); --st-solid:var(--err-solid); --st-icon:var(--err-icon); }
+.status{ display:flex; gap:12px; align-items:center; padding:14px; background:var(--st-bg); color:var(--st-ink); }
+.status-icon{
+  width:42px; height:42px; flex:none; border-radius:10px; display:grid; place-items:center;
+  font-size:24px; font-weight:700; background:var(--st-solid); color:var(--st-icon);
+}
+.station[data-state="idle"] .status-icon{
+  background:repeating-linear-gradient(90deg,var(--idle-ink) 0 2px,transparent 2px 4px,var(--idle-ink) 4px 5px,transparent 5px 8px);
+  opacity:.75;
+}
+.status-msg{ font-size:22px; font-weight:700; line-height:1.25; }
+.status-detail{ font-size:14px; margin-top:2px; word-break:break-all; }
+.slots{ display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:12px 14px 0; }
+.slot{ border:2px solid var(--line); border-radius:10px; padding:7px 10px; min-height:62px; min-width:0; }
+.slot.active{ border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft); }
+.slot-label{ display:block; font-size:12px; font-weight:700; color:var(--muted); }
+.slot.done .slot-label::after{ content:" ✓"; color:var(--ok-solid); }
+.slot-val{ display:block; font-size:18px; word-break:break-all; }
+.slot-val.empty{ font-family:inherit; font-size:14px; font-weight:400; color:var(--muted); padding-top:3px; }
+.inputrow{ display:flex; gap:8px; padding:12px 14px 0; }
+.scan{
+  flex:1; min-width:0; height:54px; font-size:20px; padding:0 12px; border-radius:10px;
+  border:2px solid var(--brand); background:var(--surface); color:var(--ink);
+  font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; font-weight:500;
+}
+.stationtools{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px 14px; }
+.check{ display:inline-flex; align-items:center; gap:8px; min-height:34px; cursor:pointer; }
+.check input{ width:20px; height:20px; accent-color:var(--brand); }
+.shake{ animation:shake .32s; }
+@keyframes shake{ 0%,100%{transform:translateX(0)} 20%{transform:translateX(-7px)} 45%{transform:translateX(7px)} 70%{transform:translateX(-4px)} }
+@media (prefers-reduced-motion: reduce){ .shake{ animation:none; } }
+
+/* counters */
+.counters{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:12px 0; }
+.counters div{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:8px 6px; text-align:center; }
+.counters b{ display:block; font-size:22px; line-height:1.2; }
+.counters span{ font-size:12px; color:var(--muted); }
+.counters .c-warn.has b{ color:var(--warn-ink); }
+.counters .c-warn.has{ background:var(--warn-bg); border-color:var(--warn-solid); }
+.counters .c-err.has b{ color:var(--err-ink); }
+.counters .c-err.has{ background:var(--err-bg); border-color:var(--err-solid); }
+
+.toolbar{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+
+/* tabs + panels */
+.tabs{ display:flex; gap:2px; }
+.tab{
+  flex:1; font:inherit; min-height:44px; background:transparent; color:var(--muted);
+  border:0; border-bottom:3px solid var(--line); cursor:pointer; font-weight:500;
+}
+.tab span{ font-size:12px; margin-left:4px; }
+.tab.active{ color:var(--ink); border-bottom-color:var(--brand); font-weight:700; }
+.panel{ background:var(--surface); border:1px solid var(--line); border-top:0; border-radius:0 0 12px 12px; overflow:hidden; }
+.searchrow{ padding:10px 12px; border-bottom:1px solid var(--line); }
+.list{ list-style:none; margin:0; padding:0; }
+.empty{ margin:0; padding:28px 18px; text-align:center; color:var(--muted); }
+.more{ display:block; width:calc(100% - 24px); margin:12px; }
+
+.row-btn{
+  display:grid; grid-template-columns:36px 1fr auto; gap:8px; align-items:center; width:100%;
+  text-align:left; background:none; border:0; border-bottom:1px solid var(--line);
+  padding:10px 12px; font:inherit; color:inherit; cursor:pointer;
+}
+.row-btn:hover{ background:var(--brand-soft); }
+.is-dup .row-btn{ background:var(--warn-bg); }
+.row-seq{ font-size:12px; color:var(--muted); font-family:"IBM Plex Mono",ui-monospace,monospace; }
+.row-main{ display:flex; flex-direction:column; min-width:0; }
+.row-sn{ font-size:16px; font-weight:600; word-break:break-all; }
+.row-pn{ font-size:13px; color:var(--muted); word-break:break-all; }
+.row-pn em{ font-style:normal; font-size:11px; font-weight:700; margin-right:5px; }
+.row-side{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-size:12px; color:var(--muted); }
+.badge{ display:inline-block; padding:0 8px; border-radius:999px; font-size:12px; font-weight:700; }
+.badge-warn{ background:var(--warn-bg); color:var(--warn-ink); border:1px solid var(--warn-solid); }
+.sum-row{ --w:0%; background:linear-gradient(90deg,var(--brand-soft) var(--w),transparent var(--w)); }
+.sum-row .row-btn{ grid-template-columns:1fr auto; background:none; }
+.sum-count{ font-size:20px; font-weight:700; }
+.sum-total .row-btn{ grid-template-columns:1fr auto; cursor:default; font-weight:700; background:var(--bg); }
+.sum-total .row-btn:hover{ background:var(--bg); }
+.log{ padding:10px 12px; border-bottom:1px solid var(--line); border-left:5px solid var(--line-strong); }
+.log-err{ border-left-color:var(--err-solid); }
+.log-warn,.log-dup{ border-left-color:var(--warn-solid); }
+.log-head{ display:flex; justify-content:space-between; gap:8px; }
+.log-time{ font-size:12px; color:var(--muted); }
+.log-val{ font-size:15px; word-break:break-all; }
+.log-msg{ font-size:13px; color:var(--muted); }
+.log-action{ font-size:12px; font-weight:700; margin-top:2px; }
+.foot{ margin:14px 2px 0; font-size:12px; color:var(--muted); }
+
+/* dialogs */
+dialog{
+  border:0; padding:0; border-radius:16px; background:var(--surface); color:var(--ink);
+  width:min(520px,calc(100% - 24px)); max-height:calc(100% - 24px); overflow:auto;
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+}
+dialog::backdrop{ background:rgba(8,16,24,.6); }
+.sheet{ padding:18px; outline:none; }
+.sheet h2{ margin:0 0 10px; font-size:18px; }
+.field{ display:grid; gap:4px; margin-bottom:12px; }
+.field > span{ font-size:13px; color:var(--muted); }
+.pair{ display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center; }
+.group{ margin:16px 0 8px; font-size:13px; font-weight:700; color:var(--brand); }
+.msg{ min-height:20px; margin:0 0 10px; font-size:13px; color:var(--err-ink); }
+.btnrow{ display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap; }
+.btnrow .spacer{ flex:1; }
+.dc-head{ display:flex; gap:12px; align-items:center; padding:16px 18px; background:var(--st-bg); color:var(--st-ink); }
+.dc-head h2{ margin:0; font-size:19px; line-height:1.3; }
+.dc-body{ padding:14px 18px 18px; }
+.dc-body p{ margin:0 0 10px; }
+.existing{ padding:10px 12px; margin-bottom:10px; border:1px solid var(--line-strong); border-radius:10px; background:var(--bg); font-size:14px; word-break:break-all; }
+.existing div + div{ margin-top:2px; }
+.existing em{ font-style:normal; font-size:12px; color:var(--muted); margin-right:6px; }
+.hint{ font-size:13px; color:var(--muted); }
+.dc-body .btnrow{ margin-top:14px; }
+.dc-body .btn{ min-height:46px; }
+
+/* toast */
+.toast{
+  position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:center; pointer-events:none;
+  padding:0 12px calc(84px + env(safe-area-inset-bottom,0px)); z-index:50;
+}
+.toast div{ background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:999px; font-size:14px; max-width:100%; box-shadow:0 6px 24px rgba(0,0,0,.3); }
+
+@media (max-width:420px){
+  .status-msg{ font-size:20px; }
+  .counters b{ font-size:20px; }
+  .slots{ gap:8px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>PN / SN 扫码录入</h1>
+    <button class="btn" id="openSettings" type="button">设置</button>
+  </header>
+  <p class="notice" id="saveWarn" hidden>当前环境无法保存到浏览器，刷新页面会丢失记录，请随时导出 Excel。</p>
+  <input class="inp" id="batch" type="text" autocomplete="off" placeholder="批次 / 单号（可选，会写入每条记录）" aria-label="批次或单号">
+
+  <section class="station" id="station" data-state="idle">
+    <div class="status" aria-live="polite">
+      <div class="status-icon" id="stIcon" aria-hidden="true"></div>
+      <div>
+        <div class="status-msg" id="stMsg">请扫描 PN</div>
+        <div class="status-detail mono" id="stDetail"></div>
+      </div>
+    </div>
+    <div class="slots">
+      <div class="slot" id="slotPn"><span class="slot-label">PN</span><span class="slot-val mono" id="pnVal"></span></div>
+      <div class="slot" id="slotSn"><span class="slot-label">SN</span><span class="slot-val mono" id="snVal"></span></div>
+    </div>
+    <div class="inputrow">
+      <input class="scan" id="scan" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-label="扫码输入框">
+      <button class="btn" id="kbBtn" type="button">键盘：开</button>
+    </div>
+    <div class="stationtools">
+      <label class="check"><input type="checkbox" id="lockPn"> 连续同一 PN（只扫 SN）</label>
+      <button class="btn small" id="resetPn" type="button">重扫 PN</button>
+    </div>
+  </section>
+
+  <div class="counters">
+    <div><b id="cTotal">0</b><span>已录入</span></div>
+    <div><b id="cPn">0</b><span>PN 种类</span></div>
+    <div class="c-warn" id="cDupBox"><b id="cDup">0</b><span>重复提醒</span></div>
+    <div class="c-err" id="cErrBox"><b id="cErr">0</b><span>错误提醒</span></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btnCopy" type="button">复制表格</button>
+    <button class="btn" id="btnUndo" type="button">撤销上一条</button>
+    <button class="btn danger" id="btnClear" type="button">清空</button>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" role="tab" type="button" data-tab="records">明细<span id="tnRec">0</span></button>
+    <button class="tab" role="tab" type="button" data-tab="summary">汇总<span id="tnSum">0</span></button>
+    <button class="tab" role="tab" type="button" data-tab="logs">提醒日志<span id="tnLog">0</span></button>
+  </div>
+
+  <section class="panel" id="panel-records">
+    <div class="searchrow"><input class="inp" id="search" type="search" autocomplete="off" placeholder="搜索 PN / SN / 批次" aria-label="搜索记录"></div>
+    <ul class="list" id="recList"></ul>
+    <p class="empty" id="recEmpty"></p>
+    <button class="btn more" id="moreBtn" type="button" hidden></button>
+  </section>
+  <section class="panel" id="panel-summary" hidden>
+    <ul class="list" id="sumList"></ul>
+    <p class="empty" id="sumEmpty">录入后会按 PN 自动汇总数量。</p>
+  </section>
+  <section class="panel" id="panel-logs" hidden>
+    <ul class="list" id="logList"></ul>
+    <p class="empty" id="logEmpty">还没有错误或重复提醒。</p>
+  </section>
+
+  <p class="foot">记录保存在当前浏览器中，请定期导出 Excel 留档。点击明细中的任意一条可以修改或删除。快捷键：Ctrl + E 一键导出。</p>
+</div>
+
+<div class="exportbar">
+  <div class="inner">
+    <button class="btn primary big" id="btnExport" type="button">一键导出 Excel <span id="expCount">0 条</span></button>
+  </div>
+</div>
+
+<!-- 重复 / 疑似扫反 / 确认 -->
+<dialog id="dlgDecide">
+  <div class="sheet" id="decideSheet" tabindex="-1" style="padding:0">
+    <div class="dc-head" id="dcHead" data-state="warn">
+      <div class="status-icon" id="dcIcon" aria-hidden="true">!</div>
+      <h2 id="dcTitle"></h2>
+    </div>
+    <div class="dc-body">
+      <p id="dcBody"></p>
+      <div class="existing" id="dcExisting" hidden></div>
+      <p class="hint" id="dcHint">扫码枪输入已暂停，请点击按钮处理。</p>
+      <div class="btnrow">
+        <button class="btn" id="dcForce" type="button"></button>
+        <button class="btn primary" id="dcDiscard" type="button"></button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<!-- 修改记录 -->
+<dialog id="dlgEdit">
+  <div class="sheet">
+    <h2>修改记录</h2>
+    <label class="field"><span>PN</span><input class="inp mono" id="edPn" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>SN</span><input class="inp mono" id="edSn" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>批次 / 单号</span><input class="inp" id="edBatch" autocomplete="off"></label>
+    <p class="msg" id="edMsg"></p>
+    <div class="btnrow">
+      <button class="btn danger" id="edDelete" type="button">删除</button>
+      <span class="spacer"></span>
+      <button class="btn" id="edCancel" type="button">取消</button>
+      <button class="btn primary" id="edSave" type="button">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- 设置 -->
+<dialog id="dlgSettings">
+  <div class="sheet">
+    <h2>设置</h2>
+
+    <div class="group">格式检查</div>
+    <div class="field"><span>PN 长度（位）</span>
+      <div class="pair"><input class="inp" id="sPnMin" type="number" min="1" inputmode="numeric"><span>至</span><input class="inp" id="sPnMax" type="number" min="1" inputmode="numeric"></div>
+    </div>
+    <div class="field"><span>SN 长度（位）</span>
+      <div class="pair"><input class="inp" id="sSnMin" type="number" min="1" inputmode="numeric"><span>至</span><input class="inp" id="sSnMax" type="number" min="1" inputmode="numeric"></div>
+    </div>
+    <label class="field"><span>PN 格式（正则，可留空）例：^[A-Z0-9-]{6,20}$</span><input class="inp mono" id="sPnRegex" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>SN 格式（正则，可留空）例：^SN\d{10}$</span><input class="inp mono" id="sSnRegex" autocomplete="off" spellcheck="false"></label>
+
+    <div class="group">条码预处理</div>
+    <label class="check" style="margin-bottom:8px"><input type="checkbox" id="sUpper"> 自动转为大写</label>
+    <label class="field"><span>PN 需要去掉的前缀（逗号分隔）例：P,1P</span><input class="inp mono" id="sPnPrefix" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>SN 需要去掉的前缀（逗号分隔）例：S,3S</span><input class="inp mono" id="sSnPrefix" autocomplete="off" spellcheck="false"></label>
+
+    <div class="group">重复检查</div>
+    <label class="field"><span>SN 查重范围</span>
+      <select class="inp" id="sScope">
+        <option value="all">所有记录（SN 全局唯一）</option>
+        <option value="pn">仅同一 PN 内</option>
+      </select>
+    </label>
+
+    <div class="group">物料清单（可选）</div>
+    <label class="field"><span>每行一个 PN。填写后，不在清单内的 PN 会被拒绝</span><textarea class="inp" id="sPnList" spellcheck="false"></textarea></label>
+
+    <div class="group">提示方式</div>
+    <label class="check" style="margin-bottom:6px"><input type="checkbox" id="sSound"> 声音提示</label><br>
+    <label class="check"><input type="checkbox" id="sVibrate"> 振动提示（手机）</label>
+
+    <p class="msg" id="setMsg" style="margin-top:12px"></p>
+    <div class="btnrow">
+      <button class="btn" id="setCancel" type="button">取消</button>
+      <button class="btn primary" id="setSave" type="button">保存设置</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" hidden><div id="toastText"></div></div>
+
+<script>
+(function(){
+'use strict';
+
+var $ = function(s, r){ return (r || document).querySelector(s); };
+var STORE_KEY = 'pnsn-scanner-v1';
+var DEFAULTS = {
+  pnMin:3, pnMax:40, snMin:3, snMax:40, pnRegex:'', snRegex:'', pnPrefix:'', snPrefix:'',
+  pnList:'', snScope:'all', upper:true, sound:true, vibrate:true, hideKb:false, lockPn:false, batch:''
+};
+var state = { records:[], logs:[], settings:Object.assign({}, DEFAULTS), seq:0 };
+var ui = { step:'pn', pn:'', status:{kind:'idle', msg:'请扫描 PN', detail:''}, tab:'records', filter:'', limit:100, editId:null };
+var finePointer = !!(window.matchMedia && window.matchMedia('(pointer:fine)').matches);
+
+/* ---------- 存储 ---------- */
+function load(){
+  try{
+    var raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return;
+    var d = JSON.parse(raw);
+    if(Array.isArray(d.records)) state.records = d.records;
+    if(Array.isArray(d.logs)) state.logs = d.logs;
+    if(d.settings && typeof d.settings === 'object') Object.assign(state.settings, d.settings);
+    state.seq = d.seq || state.records.reduce(function(m, r){ return Math.max(m, r.id || 0); }, 0);
+  }catch(e){}
+}
+var saveFailed = false;
+function save(){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify({ records:state.records, logs:state.logs, settings:state.settings, seq:state.seq }));
+  }catch(e){
+    if(!saveFailed){ saveFailed = true; $('#saveWarn').hidden = false; }
+  }
+}
+
+/* ---------- 工具 ---------- */
+function h(tag, attrs){
+  var e = document.createElement(tag);
+  if(attrs){
+    for(var k in attrs){
+      if(k === 'class') e.className = attrs[k];
+      else if(k === 'text') e.textContent = attrs[k];
+      else if(k === 'dataset'){ for(var d in attrs[k]) e.dataset[d] = attrs[k][d]; }
+      else e.setAttribute(k, attrs[k]);
+    }
+  }
+  for(var i = 2; i < arguments.length; i++){
+    var c = arguments[i];
+    if(c === null || c === undefined || c === false) continue;
+    e.append(typeof c === 'object' ? c : document.createTextNode(String(c)));
+  }
+  return e;
+}
+function p2(n){ return String(n).padStart(2, '0'); }
+function fmtFull(ts){
+  var d = new Date(ts);
+  return d.getFullYear() + '-' + p2(d.getMonth()+1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+}
+function fmtShort(ts){
+  var d = new Date(ts), n = new Date();
+  var t = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+  return d.toDateString() === n.toDateString() ? t : p2(d.getMonth()+1) + '-' + p2(d.getDate()) + ' ' + t;
+}
+var toastTimer = null;
+function toast(msg){
+  $('#toastText').textContent = msg;
+  $('#toast').hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ $('#toast').hidden = true; }, 2600);
+}
+function anyDialog(){ return !!document.querySelector('dialog[open]'); }
+function focusScan(){ try{ $('#scan').focus({preventScroll:true}); }catch(e){} }
+
+/* ---------- 声音 / 振动 ---------- */
+var actx = null;
+function tone(freq, start, dur, type, vol){
+  var o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.exponentialRampToValueAtTime(vol, start + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(start); o.stop(start + dur + 0.02);
+}
+function beep(kind){
+  if(!state.settings.sound) return;
+  try{
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    actx = actx || new AC();
+    if(actx.state === 'suspended') actx.resume();
+    var t = actx.currentTime + 0.01;
+    if(kind === 'tick'){ tone(1200, t, 0.05, 'sine', 0.12); }
+    else if(kind === 'ok'){ tone(880, t, 0.09, 'sine', 0.2); tone(1320, t + 0.11, 0.09, 'sine', 0.2); }
+    else if(kind === 'warn'){ tone(620, t, 0.14, 'square', 0.12); tone(620, t + 0.2, 0.14, 'square', 0.12); tone(620, t + 0.4, 0.14, 'square', 0.12); }
+    else { tone(170, t, 0.5, 'sawtooth', 0.18); }
+  }catch(e){}
+}
+function buzz(kind){
+  if(!state.settings.vibrate) return;
+  try{
+    if(!navigator.vibrate) return;
+    navigator.vibrate(kind === 'ok' || kind === 'tick' ? 30 : kind === 'warn' ? [90, 60, 90] : [300]);
+  }catch(e){}
+}
+function feedback(kind){ beep(kind); buzz(kind); }
+
+/* ---------- 规范化与校验 ---------- */
+function normalize(raw, kind){
+  var s = state.settings;
+  var v = String(raw).replace(/[\u0000-\u001f\u007f\u200b-\u200f\ufeff]/g, '').trim();
+  if(s.upper) v = v.toUpperCase();
+  var list = String(kind === 'pn' ? s.pnPrefix : s.snPrefix).split(/[,，\s]+/).filter(Boolean)
+    .map(function(p){ return s.upper ? p.toUpperCase() : p; })
+    .sort(function(a, b){ return b.length - a.length; });
+  for(var i = 0; i < list.length; i++){
+    if(v.indexOf(list[i]) === 0 && v.length > list[i].length){ v = v.slice(list[i].length); break; }
+  }
+  return v;
+}
+function makeRx(str){
+  if(!str) return null;
+  try{ return new RegExp(str, 'i'); }catch(e){ return null; }
+}
+function validateFormat(v, kind){
+  var s = state.settings, label = kind === 'pn' ? 'PN' : 'SN';
+  if(!v) return label + ' 为空';
+  if(!/^[\x21-\x7e]+$/.test(v)) return label + ' 含空格或非法字符（请检查输入法是否为英文）';
+  var min = kind === 'pn' ? s.pnMin : s.snMin, max = kind === 'pn' ? s.pnMax : s.snMax;
+  if(v.length < min) return label + ' 只有 ' + v.length + ' 位，少于最小 ' + min + ' 位（可能没扫全）';
+  if(v.length > max) return label + ' 有 ' + v.length + ' 位，超过最大 ' + max + ' 位（可能多扫了内容）';
+  var rx = makeRx(kind === 'pn' ? s.pnRegex : s.snRegex);
+  if(rx && !rx.test(v)) return label + ' 不符合设定的格式规则';
+  return null;
+}
+var pnSetCache = { src:null, set:new Set() };
+function pnSet(){
+  var t = state.settings.pnList || '';
+  if(pnSetCache.src !== t){
+    var arr = t.split(/\r?\n/).map(function(x){
+      x = x.trim(); return state.settings.upper ? x.toUpperCase() : x;
+    }).filter(Boolean);
+    pnSetCache = { src:t, set:new Set(arr) };
+  }
+  return pnSetCache.set;
+}
+function sameSN(a, b){
+  return a.sn === b.sn && (state.settings.snScope === 'all' || a.pn === b.pn);
+}
+function dupKey(r){ return state.settings.snScope === 'pn' ? r.pn + '\u0001' + r.sn : r.sn; }
+function computeDupMap(){
+  var m = new Map();
+  state.records.forEach(function(r){ var k = dupKey(r); m.set(k, (m.get(k) || 0) + 1); });
+  return m;
+}
+
+function checkPN(v){
+  var f = validateFormat(v, 'pn');
+  if(f) return { type:'error', log:'格式错误', msg:f };
+  var set = pnSet();
+  if(set.size && !set.has(v)) return { type:'error', log:'PN 不在清单', msg:'PN 不在物料清单中，请核对是否拿错货物' };
+  var asSn = state.records.find(function(r){ return r.sn === v; });
+  if(asSn){
+    return { type:'confirm', log:'疑似扫反', level:'warn', tone:'warn',
+      title:'疑似扫反：这个码是 SN',
+      body:'这个码已经作为 SN 录入过，你可能把 SN 当成 PN 扫了。',
+      existing:asSn, discardLabel:'重新扫描', forceLabel:'仍作为 PN 使用',
+      msg:'PN 位置扫到了已录入的 SN' };
+  }
+  return { type:'ok' };
+}
+function checkSN(v, pn){
+  var f = validateFormat(v, 'sn');
+  if(f) return { type:'error', log:'格式错误', msg:f };
+  if(v === pn) return { type:'error', log:'格式错误', msg:'SN 与 PN 相同，可能重复扫了 PN，请扫描 SN' };
+  var knownPn = pnSet().has(v) || state.records.some(function(r){ return r.pn === v; });
+  if(knownPn){
+    return { type:'confirm', log:'疑似扫反', level:'warn', tone:'warn',
+      title:'疑似扫反：这个码是 PN',
+      body:'这个码是已知的 PN，不像 SN。可能扫到了别的货物的 PN。',
+      existing:null, discardLabel:'重新扫描', forceLabel:'仍作为 SN 记录',
+      msg:'SN 位置扫到了已知的 PN' };
+  }
+  var hits = state.records.filter(function(r){ return r.sn === v && (state.settings.snScope === 'all' || r.pn === pn); });
+  if(hits.length){
+    var first = hits[0], samePn = first.pn === pn;
+    return { type:'confirm', log:'重复 SN', level:'dup', tone:'warn',
+      title: samePn ? '重复：此 SN 已录入' : '重复：SN 已录入，但 PN 不同',
+      body: samePn ? ('这个 SN 已经记录过 ' + hits.length + ' 次。') : '这个 SN 之前对应的是另一个 PN，请核对货物。',
+      existing:first, discardLabel:'放弃这条', forceLabel:'仍然记录',
+      msg: samePn ? ('SN 已录入 ' + hits.length + ' 次') : ('SN 已录入，原 PN 为 ' + first.pn) };
+  }
+  return { type:'ok' };
+}
+
+/* ---------- 日志 ---------- */
+function addLog(type, value, msg, level, pn){
+  var e = { id:Date.now() + Math.random(), ts:Date.now(), type:type, level:level, pn:pn || '', value:value || '', msg:msg || '', action:'' };
+  state.logs.push(e);
+  if(state.logs.length > 2000) state.logs.splice(0, state.logs.length - 2000);
+  save();
+  return e;
+}
+
+/* ---------- 状态 ---------- */
+function setStatus(kind, msg, detail){ ui.status = { kind:kind, msg:msg, detail:detail || '' }; }
+function shakeStation(){
+  var st = $('#station');
+  st.classList.remove('shake'); void st.offsetWidth; st.classList.add('shake');
+}
+function fail(logType, value, msg, pn){
+  addLog(logType, value, msg, 'err', pn);
+  setStatus('err', msg, '扫到：' + value);
+  feedback('err');
+  renderAll();
+  shakeStation();
+}
+
+/* ---------- 扫码流程 ---------- */
+function submit(){
+  var raw = $('#scan').value;
+  $('#scan').value = '';
+  if(!raw.trim()) return;
+  if(ui.step === 'pn') handlePN(raw); else handleSN(raw);
+}
+function handlePN(raw){
+  var v = normalize(raw, 'pn');
+  var r = checkPN(v);
+  if(r.type === 'error'){ fail(r.log, v || raw.trim(), r.msg, ''); return; }
+  if(r.type === 'confirm'){
+    var entry = addLog(r.log, v, r.msg, r.level, '');
+    setStatus('warn', '等待确认：' + r.title, v);
+    ask({ tone:r.tone, title:r.title, body:r.body, existing:r.existing, scan:{ pn:v, sn:'' },
+      discardLabel:r.discardLabel, forceLabel:r.forceLabel, logEntry:entry,
+      onForce:function(){ acceptPN(v); },
+      onDiscard:function(){ setStatus('warn', '已放弃，请重新扫描 PN', v); } });
+    return;
+  }
+  acceptPN(v);
+}
+function acceptPN(v){
+  ui.pn = v; ui.step = 'sn';
+  setStatus('idle', 'PN 已确认，请扫描 SN', v);
+  feedback('tick');
+  renderAll();
+}
+function handleSN(raw){
+  var v = normalize(raw, 'sn');
+  var r = checkSN(v, ui.pn);
+  if(r.type === 'error'){ fail(r.log, v || raw.trim(), r.msg, ui.pn); return; }
+  if(r.type === 'confirm'){
+    var pn = ui.pn;
+    var entry = addLog(r.log, v, r.msg, r.level, pn);
+    setStatus('warn', '等待确认：' + r.title, v);
+    ask({ tone:r.tone, title:r.title, body:r.body, existing:r.existing, scan:{ pn:pn, sn:v },
+      discardLabel:r.discardLabel, forceLabel:r.forceLabel, logEntry:entry,
+      onForce:function(){ commit(pn, v, true); },
+      onDiscard:function(){ setStatus('warn', '已放弃，这条没有记录', v); } });
+    return;
+  }
+  commit(ui.pn, v, false);
+}
+function commit(pn, sn, forced){
+  var rec = { id:++state.seq, ts:Date.now(), pn:pn, sn:sn, batch:(state.settings.batch || '').trim() };
+  state.records.push(rec);
+  save();
+  if(state.settings.lockPn){ ui.step = 'sn'; ui.pn = pn; }
+  else { ui.step = 'pn'; ui.pn = ''; }
+  var next = state.settings.lockPn ? '请扫描下一个 SN' : '请扫描下一个 PN';
+  if(forced) setStatus('warn', '已记录（重复），' + next, 'PN ' + pn + '  SN ' + sn);
+  else setStatus('ok', '已记录，' + next, 'PN ' + pn + '  SN ' + sn);
+  feedback(forced ? 'warn' : 'ok');
+  renderAll();
+}
+
+/* ---------- 决策弹窗（重复 / 扫反 / 确认） ---------- */
+var decision = null;
+function ask(o){
+  decision = o;
+  var head = $('#dcHead');
+  head.dataset.state = o.tone === 'err' ? 'err' : 'warn';
+  $('#dcIcon').textContent = o.tone === 'err' ? '✕' : '!';
+  $('#dcTitle').textContent = o.title;
+  $('#dcBody').textContent = o.body;
+  $('#dcHint').hidden = o.hint === false;
+  var ex = $('#dcExisting');
+  ex.textContent = '';
+  var has = false;
+  if(o.scan){
+    ex.append(h('div', null, h('em', {text:'本次'}), 'PN ' + (o.scan.pn || '—') + (o.scan.sn ? '   SN ' + o.scan.sn : '')));
+    has = true;
+  }
+  if(o.existing){
+    var idx = state.records.indexOf(o.existing) + 1;
+    ex.append(h('div', null, h('em', {text:'已有'}), '第 ' + idx + ' 条，' + fmtFull(o.existing.ts)));
+    ex.append(h('div', null, 'PN ' + o.existing.pn + '   SN ' + o.existing.sn));
+    has = true;
+  }
+  ex.hidden = !has;
+  $('#dcForce').textContent = o.forceLabel;
+  $('#dcDiscard').textContent = o.discardLabel;
+  if(!o.silent) feedback(o.tone === 'err' ? 'err' : 'warn');
+  renderAll();
+  $('#dlgDecide').showModal();
+  $('#decideSheet').focus();
+}
+function resolveDecision(force){
+  var d = decision;
+  if(!d) return;
+  decision = null;
+  $('#dlgDecide').close();
+  if(force){
+    if(d.logEntry) d.logEntry.action = d.forceAction || '仍然记录';
+    if(d.onForce) d.onForce();
+  }else{
+    if(d.logEntry) d.logEntry.action = '已放弃';
+    if(d.onDiscard) d.onDiscard();
+  }
+  save();
+  renderAll();
+  focusScan();
+}
+$('#dcForce').addEventListener('click', function(){ resolveDecision(true); });
+$('#dcDiscard').addEventListener('click', function(){ resolveDecision(false); });
+$('#dlgDecide').addEventListener('cancel', function(e){ e.preventDefault(); resolveDecision(false); });
+/* 弹窗打开时吞掉所有按键（扫码枪的回车 / Tab 不会误触按钮），Esc 等于放弃 */
+$('#dlgDecide').addEventListener('keydown', function(e){
+  if(e.key === 'Escape') return;
+  e.preventDefault(); e.stopPropagation();
+});
+
+/* ---------- 渲染 ---------- */
+function renderStation(){
+  var st = ui.status;
+  $('#station').dataset.state = st.kind;
+  $('#stMsg').textContent = st.msg;
+  $('#stDetail').textContent = st.detail || '';
+  $('#stIcon').textContent = { ok:'✓', warn:'!', err:'✕', idle:'' }[st.kind] || '';
+  var pnv = $('#pnVal'), snv = $('#snVal');
+  pnv.textContent = ui.pn || '等待扫描';
+  pnv.classList.toggle('empty', !ui.pn);
+  snv.textContent = ui.step === 'sn' ? '等待扫描' : '—';
+  snv.classList.add('empty');
+  $('#slotPn').classList.toggle('active', ui.step === 'pn');
+  $('#slotPn').classList.toggle('done', !!ui.pn);
+  $('#slotSn').classList.toggle('active', ui.step === 'sn');
+  $('#scan').placeholder = ui.step === 'pn' ? '扫描 PN，然后回车' : '扫描 SN，然后回车';
+  $('#resetPn').disabled = !ui.pn && ui.step === 'pn';
+  $('#lockPn').checked = !!state.settings.lockPn;
+  applyKb();
+}
+function applyKb(){
+  var hide = !!state.settings.hideKb;
+  $('#scan').setAttribute('inputmode', hide ? 'none' : 'text');
+  $('#kbBtn').textContent = hide ? '键盘：关' : '键盘：开';
+}
+function renderCounters(){
+  var pns = new Set(state.records.map(function(r){ return r.pn; }));
+  var dupN = state.logs.filter(function(l){ return l.type === '重复 SN'; }).length;
+  var errN = state.logs.filter(function(l){ return l.level === 'err' || l.level === 'warn'; }).length;
+  $('#cTotal').textContent = state.records.length;
+  $('#expCount').textContent = state.records.length + ' 条';
+  $('#cPn').textContent = pns.size;
+  $('#cDup').textContent = dupN;
+  $('#cErr').textContent = errN;
+  $('#cDupBox').classList.toggle('has', dupN > 0);
+  $('#cErrBox').classList.toggle('has', errN > 0);
+  $('#tnRec').textContent = state.records.length;
+  $('#tnSum').textContent = pns.size;
+  $('#tnLog').textContent = state.logs.filter(function(l){ return l.level !== 'info'; }).length;
+}
+function renderRecords(){
+  var ul = $('#recList');
+  ul.textContent = '';
+  var q = ui.filter.trim().toUpperCase();
+  var dupMap = computeDupMap();
+  var items = state.records.map(function(r, i){ return { r:r, i:i }; }).reverse();
+  if(q){
+    items = items.filter(function(x){
+      return x.r.pn.toUpperCase().indexOf(q) >= 0 || x.r.sn.toUpperCase().indexOf(q) >= 0 || (x.r.batch || '').toUpperCase().indexOf(q) >= 0;
+    });
+  }
+  var empty = $('#recEmpty');
+  empty.hidden = items.length > 0;
+  empty.textContent = state.records.length ? '没有匹配的记录。' : '还没有记录。先扫描 PN，再扫描 SN，就会出现在这里。';
+  var frag = document.createDocumentFragment();
+  items.slice(0, ui.limit).forEach(function(x){
+    var r = x.r, n = dupMap.get(dupKey(r));
+    frag.append(h('li', { class:n > 1 ? 'is-dup' : '', dataset:{ id:r.id } },
+      h('button', { class:'row-btn', type:'button' },
+        h('span', { class:'row-seq', text:String(x.i + 1) }),
+        h('span', { class:'row-main' },
+          h('span', { class:'row-sn mono', text:r.sn }),
+          h('span', { class:'row-pn' }, h('em', { text:'PN' }), h('span', { class:'mono', text:r.pn }))),
+        h('span', { class:'row-side' },
+          h('span', { text:fmtShort(r.ts) }),
+          n > 1 && h('span', { class:'badge badge-warn', text:'重复' }),
+          r.batch && h('span', { text:r.batch })))));
+  });
+  ul.append(frag);
+  var more = $('#moreBtn');
+  more.hidden = items.length <= ui.limit;
+  more.textContent = '显示更多（还有 ' + (items.length - ui.limit) + ' 条）';
+}
+function summaryData(){
+  var m = new Map();
+  state.records.forEach(function(r){ m.set(r.pn, (m.get(r.pn) || 0) + 1); });
+  return Array.from(m.entries()).sort(function(a, b){ return b[1] - a[1] || (a[0] < b[0] ? -1 : 1); });
+}
+function renderSummary(){
+  var ul = $('#sumList');
+  ul.textContent = '';
+  var data = summaryData();
+  $('#sumEmpty').hidden = data.length > 0;
+  var max = data.length ? data[0][1] : 1;
+  var frag = document.createDocumentFragment();
+  data.forEach(function(x){
+    var li = h('li', { class:'sum-row', dataset:{ pn:x[0] } },
+      h('button', { class:'row-btn', type:'button' },
+        h('span', { class:'row-sn mono', text:x[0] }),
+        h('span', { class:'sum-count', text:String(x[1]) })));
+    li.style.setProperty('--w', Math.round(x[1] / max * 100) + '%');
+    frag.append(li);
+  });
+  if(data.length){
+    frag.append(h('li', { class:'sum-total' },
+      h('div', { class:'row-btn' }, h('span', { text:'合计（' + data.length + ' 种 PN）' }), h('span', { class:'sum-count', text:String(state.records.length) }))));
+  }
+  ul.append(frag);
+}
+function renderLogs(){
+  var ul = $('#logList');
+  ul.textContent = '';
+  $('#logEmpty').hidden = state.logs.length > 0;
+  var frag = document.createDocumentFragment();
+  state.logs.slice().reverse().slice(0, 300).forEach(function(l){
+    frag.append(h('li', { class:'log log-' + l.level },
+      h('div', { class:'log-head' }, h('strong', { text:l.type }), h('span', { class:'log-time', text:fmtFull(l.ts) })),
+      l.value && h('div', { class:'mono log-val', text:l.value }),
+      l.msg && h('div', { class:'log-msg', text:l.msg }),
+      l.action && h('div', { class:'log-action', text:'处理：' + l.action })));
+  });
+  ul.append(frag);
+}
+function renderTabs(){
+  document.querySelectorAll('.tab').forEach(function(t){
+    var on = t.dataset.tab === ui.tab;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  ['records', 'summary', 'logs'].forEach(function(n){ $('#panel-' + n).hidden = ui.tab !== n; });
+}
+function renderAll(){
+  renderStation();
+  renderCounters();
+  renderTabs();
+  if(ui.tab === 'records') renderRecords();
+  else if(ui.tab === 'summary') renderSummary();
+  else renderLogs();
+}
+
+/* ---------- 修改 / 删除 / 撤销 / 清空 ---------- */
+var delArmed = false, delTimer = null;
+function resetDel(){
+  delArmed = false; clearTimeout(delTimer);
+  var b = $('#edDelete'); b.textContent = '删除'; b.classList.remove('armed');
+}
+function openEdit(id){
+  var rec = state.records.find(function(r){ return r.id === id; });
+  if(!rec) return;
+  ui.editId = id;
+  $('#edPn').value = rec.pn; $('#edSn').value = rec.sn; $('#edBatch').value = rec.batch || '';
+  $('#edMsg').textContent = '';
+  resetDel();
+  $('#dlgEdit').showModal();
+}
+function saveEdit(){
+  var rec = state.records.find(function(r){ return r.id === ui.editId; });
+  if(!rec){ $('#dlgEdit').close(); return; }
+  var pn = normalize($('#edPn').value, 'pn'), sn = normalize($('#edSn').value, 'sn');
+  var set = pnSet();
+  var msg = validateFormat(pn, 'pn') || validateFormat(sn, 'sn') ||
+    (set.size && !set.has(pn) ? 'PN 不在物料清单中' : null) ||
+    (pn === sn ? 'SN 与 PN 相同' : null);
+  if(msg){ $('#edMsg').textContent = msg; return; }
+  var dup = state.records.some(function(r){ return r.id !== rec.id && sameSN(r, { pn:pn, sn:sn }); });
+  var before = 'PN ' + rec.pn + ' / SN ' + rec.sn;
+  rec.pn = pn; rec.sn = sn; rec.batch = $('#edBatch').value.trim();
+  addLog('已修改', sn, before + ' 改为 PN ' + pn + ' / SN ' + sn, 'info', pn);
+  save();
+  $('#dlgEdit').close();
+  renderAll();
+  toast(dup ? '已保存。注意：这个 SN 现在与其他记录重复' : '已保存');
+}
+function deleteEdit(){
+  if(!delArmed){
+    delArmed = true;
+    var b = $('#edDelete'); b.textContent = '再点一次确认'; b.classList.add('armed');
+    delTimer = setTimeout(resetDel, 3000);
+    return;
+  }
+  var idx = state.records.findIndex(function(r){ return r.id === ui.editId; });
+  if(idx >= 0){
+    var rec = state.records.splice(idx, 1)[0];
+    addLog('已删除', rec.sn, '删除记录：PN ' + rec.pn + ' / SN ' + rec.sn, 'info', rec.pn);
+    save();
+  }
+  resetDel();
+  $('#dlgEdit').close();
+  renderAll();
+  toast('已删除');
+}
+function undoLast(){
+  var r = state.records.pop();
+  if(!r){ toast('没有可撤销的记录'); return; }
+  addLog('已撤销', r.sn, '撤销上一条：PN ' + r.pn + ' / SN ' + r.sn, 'info', r.pn);
+  save();
+  setStatus('warn', '已撤销上一条', 'PN ' + r.pn + '  SN ' + r.sn);
+  renderAll();
+}
+function clearAll(){
+  if(!state.records.length && !state.logs.length){ toast('当前没有数据'); return; }
+  ask({ tone:'err', silent:true, hint:false, title:'清空全部数据？',
+    body:'将删除所有明细和提醒日志，无法恢复。请先导出 Excel。',
+    discardLabel:'取消', forceLabel:'清空全部',
+    onForce:function(){
+      state.records = []; state.logs = [];
+      ui.pn = ''; ui.step = 'pn';
+      setStatus('idle', '已清空，请扫描 PN', '');
+    } });
+}
+
+/* ---------- 设置 ---------- */
+function openSettings(){
+  var s = state.settings;
+  $('#sPnMin').value = s.pnMin; $('#sPnMax').value = s.pnMax;
+  $('#sSnMin').value = s.snMin; $('#sSnMax').value = s.snMax;
+  $('#sPnRegex').value = s.pnRegex; $('#sSnRegex').value = s.snRegex;
+  $('#sPnPrefix').value = s.pnPrefix; $('#sSnPrefix').value = s.snPrefix;
+  $('#sUpper').checked = !!s.upper; $('#sScope').value = s.snScope;
+  $('#sPnList').value = s.pnList;
+  $('#sSound').checked = !!s.sound; $('#sVibrate').checked = !!s.vibrate;
+  $('#setMsg').textContent = '';
+  $('#dlgSettings').showModal();
+}
+function saveSettings(){
+  function num(id, def){ var v = parseInt($(id).value, 10); return isFinite(v) && v > 0 ? v : def; }
+  var n = {
+    pnMin:num('#sPnMin', 3), pnMax:num('#sPnMax', 40), snMin:num('#sSnMin', 3), snMax:num('#sSnMax', 40),
+    pnRegex:$('#sPnRegex').value.trim(), snRegex:$('#sSnRegex').value.trim(),
+    pnPrefix:$('#sPnPrefix').value.trim(), snPrefix:$('#sSnPrefix').value.trim(),
+    upper:$('#sUpper').checked, snScope:$('#sScope').value, pnList:$('#sPnList').value,
+    sound:$('#sSound').checked, vibrate:$('#sVibrate').checked
+  };
+  var msg = '';
+  if(n.pnMin > n.pnMax) msg = 'PN 最小长度不能大于最大长度';
+  else if(n.snMin > n.snMax) msg = 'SN 最小长度不能大于最大长度';
+  else if(n.pnRegex){ try{ new RegExp(n.pnRegex, 'i'); }catch(e){ msg = 'PN 正则写法有误'; } }
+  if(!msg && n.snRegex){ try{ new RegExp(n.snRegex, 'i'); }catch(e){ msg = 'SN 正则写法有误'; } }
+  if(msg){ $('#setMsg').textContent = msg; return; }
+  Object.assign(state.settings, n);
+  save();
+  $('#dlgSettings').close();
+  renderAll();
+  toast('设置已保存');
+}
+
+/* ---------- 导出 ---------- */
+function buildSheets(){
+  var dupMap = computeDupMap();
+  var detail = [['序号', '时间', '批次', 'PN', 'SN', '状态']];
+  state.records.forEach(function(r, i){
+    detail.push([i + 1, fmtFull(r.ts), r.batch || '', r.pn, r.sn, dupMap.get(dupKey(r)) > 1 ? '重复' : '正常']);
+  });
+  var summary = [['PN', '数量']];
+  summaryData().forEach(function(x){ summary.push([x[0], x[1]]); });
+  summary.push(['合计', state.records.length]);
+  var logs = [['时间', '类型', 'PN', '扫描内容', '说明', '处理结果']];
+  state.logs.forEach(function(l){ logs.push([fmtFull(l.ts), l.type, l.pn || '', l.value || '', l.msg || '', l.action || '']); });
+  return { detail:detail, summary:summary, logs:logs };
+}
+function fileStamp(){
+  var d = new Date();
+  return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '_' + p2(d.getHours()) + p2(d.getMinutes());
+}
+var dlPromise = (async function(){
+  try{
+    if(window.claude && typeof window.claude.use === 'function') return await window.claude.use('downloads');
+  }catch(e){}
+  return null;
+})();
+async function saveFile(filename, blob){
+  var dl = await dlPromise;
+  if(dl){
+    try{
+      var res = await dl.save({ filename:filename, data:blob });
+      toast(res && res.status === 'delivered' ? '已提交导出' : '已导出：' + filename);
+    }catch(e){
+      if(e && e.code === 'declined') toast('已取消导出');
+      else toast('导出失败：' + ((e && e.message) || '未知错误'));
+    }
+    return;
+  }
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  toast('已导出：' + filename);
+}
+function exportExcel(){
+  if(!state.records.length && !state.logs.length){ toast('还没有记录可导出'); return; }
+  var s = buildSheets();
+  var batch = (state.settings.batch || '').trim().replace(/[\\/:*?"<>|]/g, '_');
+  var base = '扫码记录_' + (batch ? batch + '_' : '') + fileStamp();
+  if(window.XLSX){
+    var wb = XLSX.utils.book_new();
+    var w1 = XLSX.utils.aoa_to_sheet(s.detail);
+    w1['!cols'] = [{wch:6}, {wch:20}, {wch:16}, {wch:26}, {wch:30}, {wch:8}];
+    var w2 = XLSX.utils.aoa_to_sheet(s.summary);
+    w2['!cols'] = [{wch:30}, {wch:8}];
+    var w3 = XLSX.utils.aoa_to_sheet(s.logs);
+    w3['!cols'] = [{wch:20}, {wch:12}, {wch:22}, {wch:28}, {wch:40}, {wch:12}];
+    XLSX.utils.book_append_sheet(wb, w1, '明细');
+    XLSX.utils.book_append_sheet(wb, w2, '汇总');
+    XLSX.utils.book_append_sheet(wb, w3, '提醒日志');
+    var out = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+    saveFile(base + '.xlsx', new Blob([out], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  }else{
+    var csv = '\ufeff' + s.detail.map(function(r){
+      return r.map(function(c){ return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\r\n');
+    saveFile(base + '.csv', new Blob([csv], { type:'text/csv' }));
+    toast('Excel 组件未加载，已改为导出 CSV');
+  }
+}
+async function copyTable(){
+  if(!state.records.length){ toast('还没有记录可复制'); return; }
+  var text = buildSheets().detail.map(function(r){ return r.join('\t'); }).join('\n');
+  try{
+    await navigator.clipboard.writeText(text);
+    toast('已复制，可以直接粘贴到 Excel');
+  }catch(e){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try{ ok = document.execCommand('copy'); }catch(_){}
+    ta.remove();
+    toast(ok ? '已复制，可以直接粘贴到 Excel' : '复制失败，请使用“导出 Excel”');
+  }
+}
+
+/* ---------- 事件绑定 ---------- */
+$('#scan').addEventListener('keydown', function(e){
+  if(e.key === 'Enter' || (e.key === 'Tab' && this.value.trim())){
+    e.preventDefault();
+    submit();
+  }
+});
+$('#resetPn').addEventListener('click', function(){
+  ui.pn = ''; ui.step = 'pn';
+  setStatus('idle', '请扫描 PN', '');
+  renderAll();
+});
+$('#lockPn').addEventListener('change', function(){
+  state.settings.lockPn = this.checked; save();
+  if(this.checked && ui.step === 'sn') setStatus('idle', '已锁定 PN，请扫描 SN', ui.pn);
+  renderAll();
+});
+$('#kbBtn').addEventListener('click', function(){
+  state.settings.hideKb = !state.settings.hideKb; save(); applyKb(); focusScan();
+});
+var batchEl = $('#batch');
+batchEl.value = '';
+batchEl.addEventListener('input', function(){ state.settings.batch = this.value; save(); });
+batchEl.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); focusScan(); } });
+
+document.querySelectorAll('.tab').forEach(function(t){
+  t.addEventListener('click', function(){ ui.tab = t.dataset.tab; renderAll(); });
+});
+$('#search').addEventListener('input', function(){ ui.filter = this.value; ui.limit = 100; renderRecords(); });
+$('#moreBtn').addEventListener('click', function(){ ui.limit += 100; renderRecords(); });
+$('#recList').addEventListener('click', function(e){
+  var li = e.target.closest('li[data-id]');
+  if(li) openEdit(Number(li.dataset.id));
+});
+$('#sumList').addEventListener('click', function(e){
+  var li = e.target.closest('li[data-pn]');
+  if(!li) return;
+  ui.filter = li.dataset.pn; ui.limit = 100; ui.tab = 'records';
+  $('#search').value = ui.filter;
+  renderAll();
+});
+
+$('#btnExport').addEventListener('click', exportExcel);
+$('#btnCopy').addEventListener('click', copyTable);
+$('#btnUndo').addEventListener('click', undoLast);
+$('#btnClear').addEventListener('click', clearAll);
+
+$('#openSettings').addEventListener('click', openSettings);
+$('#setCancel').addEventListener('click', function(){ $('#dlgSettings').close(); });
+$('#setSave').addEventListener('click', saveSettings);
+
+$('#edSave').addEventListener('click', saveEdit);
+$('#edCancel').addEventListener('click', function(){ $('#dlgEdit').close(); });
+$('#edDelete').addEventListener('click', deleteEdit);
+['#edPn', '#edSn', '#edBatch'].forEach(function(id){
+  $(id).addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); saveEdit(); } });
+});
+['#dlgEdit', '#dlgSettings'].forEach(function(id){
+  $(id).addEventListener('close', function(){
+    resetDel();
+    if(finePointer || state.settings.hideKb) focusScan();
+  });
+});
+
+/* 点击页面其他位置后，把光标还给扫码框，避免扫码内容丢失或误触按钮 */
+document.addEventListener('click', function(e){
+  if(anyDialog()) return;
+  if(e.target.closest('input,textarea,select,label')) return;
+  setTimeout(function(){
+    if(anyDialog()) return;
+    if(finePointer || state.settings.hideKb) focusScan();
+    else if(document.activeElement && document.activeElement.tagName === 'BUTTON') document.activeElement.blur();
+  }, 0);
+});
+/* 光标不在任何输入位置时，直接开始扫码也能接住 */
+document.addEventListener('keydown', function(e){
+  if((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'e'){
+    if(anyDialog()) return;
+    e.preventDefault(); exportExcel(); return;
+  }
+  if(anyDialog() || e.ctrlKey || e.metaKey || e.altKey) return;
+  var t = document.activeElement;
+  if(t && t !== document.body && t !== document.documentElement) return;
+  if(e.key.length === 1 || e.key === 'Enter') focusScan();
+});
+
+/* ---------- 启动 ---------- */
+load();
+batchEl.value = state.settings.batch || '';
+setStatus('idle', '请扫描 PN', '');
+renderAll();
+focusScan();
+})();
+</script>
+</body>
+</html>
